@@ -51,6 +51,11 @@ jobs:
       - name: Compose up
         run: docker compose up -d --build
 
+      - name: Pre-pull browser images
+        run: |
+          docker pull ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest
+          docker pull selenoid/vnc:firefox_124.0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -59,7 +64,8 @@ jobs:
         run: pip install -r tests/requirements.txt
 
       - name: Run smoke tests
-        run: pytest tests/ -v
+        run: |
+          pytest tests/ -v || (echo "=== selenoid logs ==="; docker compose logs selenoid; exit 1)
 
       - name: Upload test artifacts
         if: failure()
