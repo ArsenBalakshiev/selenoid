@@ -36,7 +36,7 @@ jobs:
 
   e2e:
     name: E2E smoke (compose + pytest)
-    runs-on: ubuntu-latest
+    runs-on: docker-runner
     needs: test
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
   publish:
     name: Publish image to GHCR
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: docker-runner
     needs: e2e
     permissions:
       contents: read
