@@ -4,3 +4,10 @@ selenoid
 selenoid.exe
 coverage.*
 .DS_Store
+dist/
+video/
+logs/
+tests/artifacts/
+tests/.venv/
+__pycache__/
+.pytest_cache/

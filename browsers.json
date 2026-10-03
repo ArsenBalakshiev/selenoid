@@ -1,0 +1,26 @@
+{
+	"chrome": {
+		"default": "latest",
+		"versions": {
+			"latest": {
+				"image": "ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest",
+				"port": "4444"
+			},
+			"yandex": {
+				"image": "ghcr.io/arsenbalakshiev/selenoid-images:yandex-latest",
+				"port": "4444"
+			}
+		}
+	},
+	"firefox": {
+		"default": "latest",
+		"versions": {
+			"latest": {
+				"image": "selenoid/vnc:firefox_124.0",
+				"port": "4444",
+				"path": "/wd/hub",
+				"tmpfs": {"/tmp": "size=512m"}
+			}
+		}
+	}
+}
