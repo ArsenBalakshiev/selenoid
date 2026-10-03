@@ -57,20 +57,23 @@ jobs:
       - name: Start selenoid
         run: docker compose -f docker-compose.ci.yml up -d
 
-      - name: Connectivity diagnostics
+      - name: Attach runner to selenoid-net and set URL
+        # The runner itself runs as a container with a host docker socket, so
+        # the 4444 port is published on the host netns which the runner cannot
+        # reach via localhost. Attach the runner to the compose network and use
+        # the container DNS name instead.
         run: |
-          echo "DOCKER_HOST=${DOCKER_HOST:-<unset>}"
-          docker context ls || true
-          echo "--- containers ---"
-          docker ps -a
-          echo "--- selenoid state ---"
-          docker inspect selenoid --format 'state={{.State.Status}} exit={{.State.ExitCode}}' 2>/dev/null || echo "inspect failed"
-          echo "--- route ---"
-          ip route
-          echo "--- probes ---"
-          curl -s --max-time 3 http://localhost:4444/status || echo "localhost unreachable"
-          GW=$(ip route | awk '/^default/ {print $3; exit}')
-          curl -s --max-time 3 "http://$GW:4444/status" || echo "gw($GW) unreachable"
+          docker network connect selenoid-net "$(hostname)" || true
+          echo "SELENOID_URL=http://selenoid:4444/wd/hub" >> "$GITHUB_ENV"
+
+      - name: Verify connectivity
+        run: |
+          sleep 2
+          curl -sf --max-time 5 http://selenoid:4444/status || {
+            echo "=== containers ==="; docker ps -a
+            echo "=== selenoid logs ==="; docker compose -f docker-compose.ci.yml logs selenoid
+            exit 1
+          }
 
       - name: Pre-pull browser images
         run: |
