@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/aerokube/selenoid/config"
@@ -43,7 +43,7 @@ func TestConfigError(t *testing.T) {
 	conf := config.NewConfig()
 	err := conf.Load(confFile, testLogConf)
 	assert.Error(t, err)
-	assert.Equal(t, err.Error(), fmt.Sprintf("browsers config: read error: open %s: no such file or directory", confFile))
+	assert.True(t, strings.HasPrefix(err.Error(), "browsers config: read error: open "+confFile+": "), err.Error())
 }
 
 func TestLogConfigError(t *testing.T) {

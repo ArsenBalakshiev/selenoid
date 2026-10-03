@@ -227,6 +227,7 @@ func createCompatibleDockerClient(onVersionSpecified, onVersionDetermined, onUsi
 				_ = docker.Close()
 			}
 		}
+		_ = os.Unsetenv(dockerApiVersion)
 		onUsingDefaultVersion(api.DefaultVersion)
 	}
 	return client.NewClientWithOpts(client.FromEnv)
@@ -252,7 +253,9 @@ func isDockerAPIVersionCorrect(docker *client.Client) bool {
 	if err != nil {
 		return false
 	}
-	return apiInfo.APIVersion == docker.ClientVersion()
+	serverMajor, serverMinor := parseVersion(apiInfo.APIVersion)
+	clientMajor, clientMinor := parseVersion(docker.ClientVersion())
+	return serverMajor > clientMajor || (serverMajor == clientMajor && serverMinor >= clientMinor)
 }
 
 func parseGgrHost(s string) *ggr.Host {
