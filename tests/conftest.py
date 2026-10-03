@@ -3,6 +3,7 @@ import time
 
 import pytest
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 
 SELENOID_URL = os.getenv("SELENOID_URL", "http://localhost:4444/wd/hub")
@@ -30,7 +31,19 @@ def driver():
             "name": "selenoid-repo-tests",
         },
     )
-    driver = webdriver.Remote(command_executor=SELENOID_URL, options=options)
+    # Cold browser containers on slow hosts may return empty responses for the
+    # first sessions (the WebDriver proxy outpaces the driver backend), so a
+    # couple of creation retries are applied.
+    last_error = None
+    for _ in range(3):
+        try:
+            driver = webdriver.Remote(command_executor=SELENOID_URL, options=options)
+            break
+        except WebDriverException as e:
+            last_error = e
+            time.sleep(3)
+    else:
+        raise last_error
     driver.implicitly_wait(5)
     yield driver
     driver.quit()
