@@ -111,7 +111,7 @@ func wait(u string, t time.Duration) error {
 			if resp != nil {
 				_ = resp.Body.Close()
 			}
-			if err != nil {
+			if err != nil || resp.StatusCode >= http.StatusInternalServerError {
 				<-time.After(50 * time.Millisecond)
 				continue
 			}
