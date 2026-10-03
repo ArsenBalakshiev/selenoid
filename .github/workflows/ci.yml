@@ -57,6 +57,21 @@ jobs:
       - name: Start selenoid
         run: docker compose -f docker-compose.ci.yml up -d
 
+      - name: Connectivity diagnostics
+        run: |
+          echo "DOCKER_HOST=${DOCKER_HOST:-<unset>}"
+          docker context ls || true
+          echo "--- containers ---"
+          docker ps -a
+          echo "--- selenoid state ---"
+          docker inspect selenoid --format 'state={{.State.Status}} exit={{.State.ExitCode}}' 2>/dev/null || echo "inspect failed"
+          echo "--- route ---"
+          ip route
+          echo "--- probes ---"
+          curl -s --max-time 3 http://localhost:4444/status || echo "localhost unreachable"
+          GW=$(ip route | awk '/^default/ {print $3; exit}')
+          curl -s --max-time 3 "http://$GW:4444/status" || echo "gw($GW) unreachable"
+
       - name: Pre-pull browser images
         run: |
           docker pull ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest
