@@ -48,8 +48,14 @@ jobs:
       - name: Build linux binary
         run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 .
 
-      - name: Compose up
-        run: docker compose up -d --build
+      - name: Compose up (create without start)
+        run: docker compose -f docker-compose.ci.yml up -d --no-start --build
+
+      - name: Ship browsers.json into container
+        run: docker cp browsers.json selenoid:/etc/selenoid/browsers.json
+
+      - name: Start selenoid
+        run: docker compose -f docker-compose.ci.yml up -d
 
       - name: Pre-pull browser images
         run: |
@@ -87,7 +93,7 @@ jobs:
 
       - name: Compose down
         if: always()
-        run: docker compose down --remove-orphans
+        run: docker compose -f docker-compose.ci.yml down --remove-orphans
 
   publish:
     name: Publish image to GHCR
