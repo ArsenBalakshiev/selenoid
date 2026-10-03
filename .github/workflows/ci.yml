@@ -65,7 +65,17 @@ jobs:
 
       - name: Run smoke tests
         run: |
-          pytest tests/ -v || (echo "=== selenoid logs ==="; docker compose logs selenoid; exit 1)
+          pytest tests/ -v || {
+            echo "=== status probe ==="
+            curl -s http://localhost:4444/status || echo "status: unreachable"
+            echo "=== session probe ==="
+            curl -s -X POST http://localhost:4444/wd/hub/session -H 'Content-Type: application/json' -d '{"capabilities":{"alwaysMatch":{"browserName":"chrome"}}}' | head -c 500
+            echo "=== docker ps -a ==="
+            docker ps -a | head -20
+            echo "=== selenoid logs ==="
+            docker compose logs selenoid
+            exit 1
+          }
 
       - name: Upload test artifacts
         if: failure()
