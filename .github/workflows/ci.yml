@@ -78,8 +78,8 @@ jobs:
       - name: Warm up browser sessions
         run: |
           for i in 1 2 3; do
-            R=$(curl -s --max-time 60 -X POST http://selenoid:4444/wd/hub/session -H 'Content-Type: application/json' -d '{"capabilities":{"alwaysMatch":{"browserName":"chrome"}}}')
-            echo "probe $i: $(echo "$R" | head -c 80)"
+            R=$(curl -s --max-time 120 -X POST http://selenoid:4444/wd/hub/session -H 'Content-Type: application/json' -d '{"capabilities":{"alwaysMatch":{"browserName":"chrome","selenoid:options":{"enableVNC":true}}}}')
+            echo "probe $i: $(echo "$R" | head -c 120)"
             SID=$(echo "$R" | grep -oP '"sessionId":"\K[^"]+' | head -1)
             [ -n "$SID" ] && curl -s -X DELETE http://selenoid:4444/wd/hub/session/$SID -o /dev/null
             sleep 2

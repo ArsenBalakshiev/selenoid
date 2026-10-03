@@ -31,17 +31,16 @@ def driver():
             "name": "selenoid-repo-tests",
         },
     )
-    # Cold browser containers on slow hosts may return empty responses for the
-    # first sessions (the WebDriver proxy outpaces the driver backend), so a
-    # couple of creation retries are applied.
+    # Cold browser containers / proxying hiccup on shared runners may return
+    # empty responses for individual session creations, so retries are applied.
     last_error = None
-    for _ in range(3):
+    for attempt in range(5):
         try:
             driver = webdriver.Remote(command_executor=SELENOID_URL, options=options)
             break
         except WebDriverException as e:
             last_error = e
-            time.sleep(3)
+            time.sleep(2 + attempt * 2)
     else:
         raise last_error
     driver.implicitly_wait(5)
