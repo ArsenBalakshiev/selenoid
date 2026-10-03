@@ -5,8 +5,8 @@ in the repository root.
 
 ## Start Selenoid
 
-The Dockerfile expects a prebuilt linux binary (the project builds binaries outside of
-Docker, see `ci/build.sh`):
+The Dockerfile expects a prebuilt linux binary (the project builds binaries outside
+of Docker):
 
 ```bash
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/selenoid_linux_amd64 .

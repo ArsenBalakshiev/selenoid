@@ -1,0 +1,113 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go test + vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -tags 's3 metadata' -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" -tags production ./...
+
+  e2e:
+    name: E2E smoke (compose + pytest)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build linux binary
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 .
+
+      - name: Compose up
+        run: docker compose up -d --build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install -r tests/requirements.txt
+
+      - name: Run smoke tests
+        run: pytest tests/ -v
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-artifacts
+          path: tests/artifacts/
+          if-no-files-found: ignore
+
+      - name: Compose down
+        if: always()
+        run: docker compose down --remove-orphans
+
+  publish:
+    name: Publish image to GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: e2e
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build linux binaries
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 .
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_arm64 .
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
