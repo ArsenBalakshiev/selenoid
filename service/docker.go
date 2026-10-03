@@ -185,11 +185,6 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 		removeContainer(ctx, cl, requestId, browserContainerId)
 		return nil, fmt.Errorf("inspect container %s: %s", browserContainerId, err)
 	}
-	_, ok := stat.NetworkSettings.Ports[selenium]
-	if !ok {
-		removeContainer(ctx, cl, requestId, browserContainerId)
-		return nil, fmt.Errorf("no bindings available for %v", selenium)
-	}
 	servicePort := d.Service.Port
 	pc := map[string]nat.Port{
 		servicePort:      selenium,
@@ -199,6 +194,10 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 		ports.Clipboard:  clipboard,
 	}
 	hostPort := getHostPort(d.Environment, servicePort, d.Caps, stat, pc)
+	if hostPort.Selenium == "" {
+		removeContainer(ctx, cl, requestId, browserContainerId)
+		return nil, fmt.Errorf("no bindings available for %v", selenium)
+	}
 	u := &url.URL{Scheme: "http", Host: hostPort.Selenium, Path: d.Service.Path}
 
 	if d.Video {
@@ -448,12 +447,20 @@ func getHostPort(env Environment, servicePort string, caps session.Caps, stat ty
 			}
 		} else {
 			fn = func(containerPort string, port nat.Port) string {
-				return net.JoinHostPort("127.0.0.1", stat.NetworkSettings.Ports[port][0].HostPort)
+				bindings := stat.NetworkSettings.Ports[port]
+				if len(bindings) == 0 {
+					return ""
+				}
+				return net.JoinHostPort("127.0.0.1", bindings[0].HostPort)
 			}
 		}
 	} else {
 		fn = func(containerPort string, port nat.Port) string {
-			return net.JoinHostPort(env.IP, stat.NetworkSettings.Ports[port][0].HostPort)
+			bindings := stat.NetworkSettings.Ports[port]
+			if len(bindings) == 0 {
+				return ""
+			}
+			return net.JoinHostPort(env.IP, bindings[0].HostPort)
 		}
 	}
 	hp := session.HostPort{
@@ -477,7 +484,9 @@ func getContainerPorts(stat types.ContainerJSON) map[string]string {
 
 	if len(ns.Ports) > 0 {
 		for port, portBindings := range ns.Ports {
-			exposedPorts[port.Port()] = portBindings[0].HostPort
+			if len(portBindings) > 0 {
+				exposedPorts[port.Port()] = portBindings[0].HostPort
+			}
 		}
 	}
 	return exposedPorts
