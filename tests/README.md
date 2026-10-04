@@ -9,13 +9,12 @@ The Dockerfile expects a prebuilt linux binary (the project builds binaries outs
 of Docker):
 
 ```bash
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/selenoid_linux_amd64 .
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/selenoid_linux_amd64 ./cmd/selenoid
 docker compose up -d --build
 curl -s http://localhost:4444/status
 ```
 
-Browser images used are declared in the root `browsers.json`:
-`twilio/selenoid:chrome_stable_148` (chrome) and `selenoid/vnc:firefox_124.0` (firefox).
+Browser images used are declared in the root `browsers.json`.
 
 ## Run tests
 

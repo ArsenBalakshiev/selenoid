@@ -47,7 +47,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build linux binary
-        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 .
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/aerokube/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 ./cmd/selenoid
 
       - name: Compose up (create without start)
         run: docker compose -f docker-compose.ci.yml up -d --no-start --build
@@ -144,8 +144,8 @@ jobs:
 
       - name: Build linux binaries
         run: |
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 .
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X main.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_arm64 .
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/aerokube/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 ./cmd/selenoid
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/aerokube/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_arm64 ./cmd/selenoid
 
       - uses: docker/setup-qemu-action@v3
 

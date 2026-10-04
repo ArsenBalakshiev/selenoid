@@ -1,7 +1,8 @@
 .idea
 *.iml
-selenoid
-selenoid.exe
+/selenoid
+/selenoid.exe
+/selenoid-local.exe
 coverage.*
 .DS_Store
 dist/
@@ -11,3 +12,4 @@ tests/artifacts/
 tests/.venv/
 __pycache__/
 .pytest_cache/
+
