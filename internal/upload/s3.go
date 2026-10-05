@@ -4,21 +4,21 @@
 package upload
 
 import (
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"mime"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/event"
+	"github.com/ArsenBalakshiev/selenoid/internal/event"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	awssession "github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/pkg/errors"
 )
 
 func init() {
@@ -65,9 +65,9 @@ func (s3 *S3Uploader) Init() {
 		}
 		sess, err := awssession.NewSession(config)
 		if err != nil {
-			log.Fatalf("[-] [INIT] [Failed to initialize S3 support: %v]", err)
+			log.FatalNoId("INIT", "[Failed to initialize S3 support: %v]", err)
 		}
-		log.Printf("[-] [INIT] [Initialized S3 support: endpoint = %s, region = %s, bucketName = %s, accessKey = %s, keyPattern = %s, includeFiles = %s, excludeFiles = %s, forcePathStyle = %t]", s3.Endpoint, s3.Region, s3.BucketName, s3.AccessKey, s3.KeyPattern, s3.IncludeFiles, s3.ExcludeFiles, s3.ForcePathStyle)
+		log.PrintfNoId("INIT", "[Initialized S3 support: endpoint = %s, region = %s, bucketName = %s, keyPattern = %s, includeFiles = %s, excludeFiles = %s, forcePathStyle = %t]", s3.Endpoint, s3.Region, s3.BucketName, s3.KeyPattern, s3.IncludeFiles, s3.ExcludeFiles, s3.ForcePathStyle)
 		s3.manager = s3manager.NewUploader(sess)
 	}
 }
@@ -80,7 +80,7 @@ func (s3 *S3Uploader) Upload(createdFile event.CreatedFile) (bool, error) {
 			return false, fmt.Errorf("invalid pattern: %v", err)
 		}
 		if !fileMatches {
-			log.Printf("[%d] [SKIPPING_FILE] [%s] [Does not match specified patterns]", createdFile.RequestId, createdFile.Name)
+			log.Printf(createdFile.RequestId, "SKIPPING_FILE", "[%s] [Does not match specified patterns]", createdFile.Name)
 			return false, nil
 		}
 		key := GetS3Key(s3.KeyPattern, createdFile)

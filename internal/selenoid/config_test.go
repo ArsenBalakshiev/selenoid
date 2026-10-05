@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aerokube/selenoid/internal/config"
-	"github.com/aerokube/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/config"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 	assert "github.com/stretchr/testify/require"
 )
 

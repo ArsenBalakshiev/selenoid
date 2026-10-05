@@ -3,18 +3,19 @@ package service
 import (
 	"testing"
 
-	"github.com/aerokube/selenoid/internal/session"
-	"github.com/docker/docker/api/types"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
+	ctr "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	assert "github.com/stretchr/testify/require"
 )
 
-func newTestStat(ip string, ports nat.PortMap) types.ContainerJSON {
-	return types.ContainerJSON{
-		NetworkSettings: &types.NetworkSettings{
-			NetworkSettingsBase: types.NetworkSettingsBase{Ports: ports},
-			DefaultNetworkSettings: types.DefaultNetworkSettings{
-				IPAddress: ip,
+func newTestStat(ip string, ports nat.PortMap) ctr.InspectResponse {
+	return ctr.InspectResponse{
+		NetworkSettings: &ctr.NetworkSettings{
+			NetworkSettingsBase: ctr.NetworkSettingsBase{Ports: ports}, //nolint:staticcheck // Ports not yet available on NetworkSettings itself
+			Networks: map[string]*network.EndpointSettings{
+				"bridge": {IPAddress: ip},
 			},
 		},
 	}
@@ -35,7 +36,7 @@ func hostBinding(t *testing.T, hostPort string) nat.PortMap {
 func TestGetHostPortInsideDockerEmptyBindings(t *testing.T) {
 	port := seleniumPort(t)
 	stat := newTestStat("172.17.0.2", nat.PortMap{})
-	env := Environment{InDocker: true}
+	env := Environment{InDocker: true, Network: "bridge"}
 	hp := getHostPort(env, "4444", session.Caps{}, stat, map[string]nat.Port{"4444": port})
 	assert.Equal(t, "172.17.0.2:4444", hp.Selenium)
 }

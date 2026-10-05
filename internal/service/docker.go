@@ -3,9 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/aerokube/selenoid/internal/info"
-	"github.com/docker/docker/api/types"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -14,8 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/config"
-	"github.com/aerokube/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/config"
+	"github.com/ArsenBalakshiev/selenoid/internal/info"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 	ctr "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/strslice"
@@ -112,7 +111,7 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 	requestId := d.RequestId
 	image := d.Service.Image
 	ctx := context.Background()
-	log.Printf("[%d] [CREATING_CONTAINER] [%s]", requestId, image)
+	log.Printf(requestId, "CREATING_CONTAINER", "[%s]", image)
 	hostConfig := ctr.HostConfig{
 		Binds:        d.Service.Volumes,
 		AutoRemove:   true,
@@ -129,8 +128,8 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 		ExtraHosts: getExtraHosts(d.Service, d.Caps),
 	}
 	hostConfig.PublishAllPorts = d.Service.PublishAllPorts
-	if len(d.Caps.DNSServers) > 0 {
-		hostConfig.DNS = d.Caps.DNSServers
+	if len(d.DNSServers) > 0 {
+		hostConfig.DNS = d.DNSServers
 	}
 	if !d.Privileged {
 		hostConfig.CapAdd = strslice.StrSlice{sysAdmin}
@@ -163,13 +162,13 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 	browserContainerStartTime := time.Now()
 	browserContainerId := container.ID
 	videoContainerId := ""
-	log.Printf("[%d] [STARTING_CONTAINER] [%s] [%s]", requestId, image, browserContainerId)
+	log.Printf(requestId, "STARTING_CONTAINER", "[%s] [%s]", image, browserContainerId)
 	err = cl.ContainerStart(ctx, browserContainerId, ctr.StartOptions{})
 	if err != nil {
 		removeContainer(ctx, cl, requestId, browserContainerId)
 		return nil, fmt.Errorf("start container: %v", err)
 	}
-	log.Printf("[%d] [CONTAINER_STARTED] [%s] [%s] [%.2fs]", requestId, image, browserContainerId, info.SecondsSince(browserContainerStartTime))
+	log.Printf(requestId, "CONTAINER_STARTED", "[%s] [%s] [%.2fs]", image, browserContainerId, info.SecondsSince(browserContainerStartTime))
 
 	if len(d.AdditionalNetworks) > 0 {
 		for _, networkName := range d.AdditionalNetworks {
@@ -216,8 +215,8 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 		removeContainer(ctx, cl, requestId, browserContainerId)
 		return nil, fmt.Errorf("wait: %v", err)
 	}
-	log.Printf("[%d] [SERVICE_STARTED] [%s] [%s] [%.2fs]", requestId, image, browserContainerId, info.SecondsSince(serviceStartTime))
-	log.Printf("[%d] [PROXY_TO] [%s] [%s]", requestId, browserContainerId, u.String())
+	log.Printf(requestId, "SERVICE_STARTED", "[%s] [%s] [%.2fs]", image, browserContainerId, info.SecondsSince(serviceStartTime))
+	log.Printf(requestId, "PROXY_TO", "[%s] [%s]", browserContainerId, u.String())
 
 	var publishedPortsInfo map[string]string
 	if d.Service.PublishAllPorts {
@@ -233,7 +232,7 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 		Url: u,
 		Container: &session.Container{
 			ID:        browserContainerId,
-			IPAddress: getContainerIP(d.Environment.Network, stat),
+				IPAddress: getContainerIP(d.Network, stat),
 			Ports:     publishedPortsInfo,
 		},
 		HostPort: hostPort,
@@ -250,20 +249,20 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 					ShowStderr: true,
 				})
 				if err != nil {
-					log.Printf("[%d] [FAILED_TO_COPY_LOGS] [%s] [Failed to capture container logs: %v]", requestId, browserContainerId, err)
+					log.Printf(requestId, "FAILED_TO_COPY_LOGS", "[%s] [Failed to capture container logs: %v]", browserContainerId, err)
 					return
 				}
 				defer r.Close()
 				filename := filepath.Join(d.LogOutputDir, d.LogName)
 				f, err := os.Create(filename)
 				if err != nil {
-					log.Printf("[%d] [FAILED_TO_COPY_LOGS] [%s] [Failed to create log file %s: %v]", requestId, browserContainerId, filename, err)
+					log.Printf(requestId, "FAILED_TO_COPY_LOGS", "[%s] [Failed to create log file %s: %v]", browserContainerId, filename, err)
 					return
 				}
 				defer f.Close()
 				_, err = stdcopy.StdCopy(f, f, r)
 				if err != nil {
-					log.Printf("[%d] [FAILED_TO_COPY_LOGS] [%s] [Failed to copy data to log file %s: %v]", requestId, browserContainerId, filename, err)
+					log.Printf(requestId, "FAILED_TO_COPY_LOGS", "[%s] [Failed to copy data to log file %s: %v]", browserContainerId, filename, err)
 				}
 			}
 		},
@@ -347,7 +346,7 @@ func getTimeZone(service ServiceBase, caps session.Caps) *time.Location {
 	if caps.TimeZone != "" {
 		tz, err := time.LoadLocation(caps.TimeZone)
 		if err != nil {
-			log.Printf("[%d] [BAD_TIMEZONE] [%s]", service.RequestId, caps.TimeZone)
+			log.Printf(service.RequestId, "BAD_TIMEZONE", "[%s]", caps.TimeZone)
 		} else {
 			timeZone = tz
 		}
@@ -435,10 +434,8 @@ func getLabels(service *config.Browser, caps session.Caps) map[string]string {
 	return labels
 }
 
-func getHostPort(env Environment, servicePort string, caps session.Caps, stat types.ContainerJSON, pc map[string]nat.Port) session.HostPort {
-	fn := func(containerPort string, port nat.Port) string {
-		return ""
-	}
+func getHostPort(env Environment, servicePort string, caps session.Caps, stat ctr.InspectResponse, pc map[string]nat.Port) session.HostPort {
+	var fn func(containerPort string, port nat.Port) string
 	if env.IP == "" {
 		if env.InDocker {
 			containerIP := getContainerIP(env.Network, stat)
@@ -477,7 +474,7 @@ func getHostPort(env Environment, servicePort string, caps session.Caps, stat ty
 	return hp
 }
 
-func getContainerPorts(stat types.ContainerJSON) map[string]string {
+func getContainerPorts(stat ctr.InspectResponse) map[string]string {
 	ns := stat.NetworkSettings
 
 	var exposedPorts = make(map[string]string)
@@ -492,12 +489,9 @@ func getContainerPorts(stat types.ContainerJSON) map[string]string {
 	return exposedPorts
 }
 
-func getContainerIP(networkName string, stat types.ContainerJSON) string {
+func getContainerIP(networkName string, stat ctr.InspectResponse) string {
 	ns := stat.NetworkSettings
-	if ns.IPAddress != "" {
-		return stat.NetworkSettings.IPAddress
-	}
-	if len(ns.Networks) > 0 {
+	if ns.Networks != nil {
 		var possibleAddresses []string
 		for name, nt := range ns.Networks {
 			if nt.IPAddress != "" {
@@ -514,7 +508,7 @@ func getContainerIP(networkName string, stat types.ContainerJSON) string {
 	return ""
 }
 
-func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint64, browserContainer types.ContainerJSON, environ Environment, service ServiceBase, caps session.Caps) (string, error) {
+func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint64, browserContainer ctr.InspectResponse, environ Environment, service ServiceBase, caps session.Caps) (string, error) {
 	videoContainerStartTime := time.Now()
 	videoContainerImage := environ.VideoContainerImage
 	env := getEnv(service, caps)
@@ -539,7 +533,7 @@ func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint6
 		browserContainerName = defaultBrowserContainerName
 	}
 	env = append(env, fmt.Sprintf("BROWSER_CONTAINER_NAME=%s", browserContainerName))
-	log.Printf("[%d] [CREATING_VIDEO_CONTAINER] [%s]", requestId, videoContainerImage)
+	log.Printf(requestId, "CREATING_VIDEO_CONTAINER", "[%s]", videoContainerImage)
 	videoContainer, err := cl.ContainerCreate(ctx,
 		&ctr.Config{
 			Image: videoContainerImage,
@@ -553,14 +547,14 @@ func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint6
 	}
 
 	videoContainerId := videoContainer.ID
-	log.Printf("[%d] [STARTING_VIDEO_CONTAINER] [%s] [%s]", requestId, videoContainerImage, videoContainerId)
+	log.Printf(requestId, "STARTING_VIDEO_CONTAINER", "[%s] [%s]", videoContainerImage, videoContainerId)
 	err = cl.ContainerStart(ctx, videoContainerId, ctr.StartOptions{})
 	if err != nil {
 		removeContainer(ctx, cl, requestId, browserContainer.ID)
 		removeContainer(ctx, cl, requestId, videoContainerId)
 		return "", fmt.Errorf("start video container: %v", err)
 	}
-	log.Printf("[%d] [VIDEO_CONTAINER_STARTED] [%s] [%s] [%.2fs]", requestId, videoContainerImage, videoContainerId, info.SecondsSince(videoContainerStartTime))
+	log.Printf(requestId, "VIDEO_CONTAINER_STARTED", "[%s] [%s] [%.2fs]", videoContainerImage, videoContainerId, info.SecondsSince(videoContainerStartTime))
 	return videoContainerId, nil
 }
 
@@ -573,10 +567,10 @@ func getVideoOutputDir(env Environment) string {
 }
 
 func stopVideoContainer(ctx context.Context, cli *client.Client, requestId uint64, containerId string, env Environment) {
-	log.Printf("[%d] [STOPPING_VIDEO_CONTAINER] [%s]", requestId, containerId)
+	log.Printf(requestId, "STOPPING_VIDEO_CONTAINER", "[%s]", containerId)
 	err := cli.ContainerKill(ctx, containerId, "TERM")
 	if err != nil {
-		log.Printf("[%d] [FAILED_TO_STOP_VIDEO_CONTAINER] [%s] [%v]", requestId, containerId, err)
+		log.Printf(requestId, "FAILED_TO_STOP_VIDEO_CONTAINER", "[%s] [%v]", containerId, err)
 		return
 	}
 	notRunning, doesNotExist := cli.ContainerWait(ctx, containerId, ctr.WaitConditionNotRunning)
@@ -589,15 +583,15 @@ func stopVideoContainer(ctx context.Context, cli *client.Client, requestId uint6
 		removeContainer(ctx, cli, requestId, containerId)
 		return
 	}
-	log.Printf("[%d] [STOPPED_VIDEO_CONTAINER] [%s]", requestId, containerId)
+	log.Printf(requestId, "STOPPED_VIDEO_CONTAINER", "[%s]", containerId)
 }
 
 func removeContainer(ctx context.Context, cli *client.Client, requestId uint64, id string) {
-	log.Printf("[%d] [REMOVING_CONTAINER] [%s]", requestId, id)
+	log.Printf(requestId, "REMOVING_CONTAINER", "[%s]", id)
 	err := cli.ContainerRemove(ctx, id, ctr.RemoveOptions{Force: true, RemoveVolumes: true})
 	if err != nil {
-		log.Printf("[%d] [FAILED_TO_REMOVE_CONTAINER] [%s] [%v]", requestId, id, err)
+		log.Printf(requestId, "FAILED_TO_REMOVE_CONTAINER", "[%s] [%v]", id, err)
 		return
 	}
-	log.Printf("[%d] [CONTAINER_REMOVED] [%s]", requestId, id)
+	log.Printf(requestId, "CONTAINER_REMOVED", "[%s]", id)
 }

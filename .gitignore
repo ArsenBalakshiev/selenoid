@@ -8,6 +8,7 @@ coverage.*
 dist/
 video/
 logs/
+.venv/
 tests/artifacts/
 tests/.venv/
 __pycache__/

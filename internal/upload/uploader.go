@@ -1,11 +1,11 @@
 package upload
 
 import (
-	"github.com/aerokube/selenoid/internal/info"
-	"log"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/event"
+	"github.com/ArsenBalakshiev/selenoid/internal/event"
+	"github.com/ArsenBalakshiev/selenoid/internal/info"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
 )
 
 var (
@@ -22,8 +22,8 @@ type Upload struct {
 
 func Init() {
 	if upl != nil {
-		for _, upl := range upl.uploaders {
-			event.InitIfNeeded(upl)
+		for _, u := range upl.uploaders {
+			event.InitIfNeeded(u)
 		}
 	}
 }
@@ -37,19 +37,20 @@ func AddUploader(u Uploader) {
 }
 
 func (ul *Upload) OnFileCreated(createdFile event.CreatedFile) {
-	if len(ul.uploaders) > 0 {
-		for _, uploader := range ul.uploaders {
-			go func(uploader Uploader) {
-				s := time.Now()
-				uploaded, err := uploader.Upload(createdFile)
-				if err != nil {
-					log.Printf("[%d] [UPLOADING_FILE] [%s] [Failed to upload: %v]", createdFile.RequestId, createdFile.Name, err)
-					return
-				}
-				if uploaded {
-					log.Printf("[%d] [UPLOADED_FILE] [%s] [%.2fs]", createdFile.RequestId, createdFile.Name, info.SecondsSince(s))
-				}
-			}(uploader)
-		}
+	if len(ul.uploaders) == 0 {
+		return
+	}
+	for _, uploader := range ul.uploaders {
+		go func(u Uploader) {
+			s := time.Now()
+			uploaded, err := u.Upload(createdFile)
+			if err != nil {
+				log.Printf(createdFile.RequestId, "UPLOADING_FILE", "[%s] [Failed to upload: %v]", createdFile.Name, err)
+				return
+			}
+			if uploaded {
+				log.Printf(createdFile.RequestId, "UPLOADED_FILE", "[%s] [%.2fs]", createdFile.Name, info.SecondsSince(s))
+			}
+		}(uploader)
 	}
 }

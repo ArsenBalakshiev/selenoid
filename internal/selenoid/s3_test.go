@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/event"
-	"github.com/aerokube/selenoid/internal/session"
-	"github.com/aerokube/selenoid/internal/upload"
+	"github.com/ArsenBalakshiev/selenoid/internal/event"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/upload"
 	assert "github.com/stretchr/testify/require"
 )
 

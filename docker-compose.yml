@@ -13,11 +13,16 @@ services:
     container_name: selenoid
     ports:
       - "4444:4444"
+    environment:
+      # Sibling video-recorder containers resolve bind sources on the Docker
+      # daemon host, so the video directory must be mounted at the SAME host
+      # path they are configured with (OVERRIDE_VIDEO_OUTPUT_DIR).
+      - OVERRIDE_VIDEO_OUTPUT_DIR=/opt/selenoid/video
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./browsers.json:/etc/selenoid/browsers.json:ro
-      - ./video:/opt/selenoid/video
-      - ./logs:/opt/selenoid/logs
+      - /opt/selenoid/video:/opt/selenoid/video
+      - /opt/selenoid/logs:/opt/selenoid/logs
     entrypoint:
       [
         "/usr/bin/selenoid",

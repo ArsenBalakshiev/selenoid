@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/protect"
-	"github.com/aerokube/selenoid/internal/service"
-	"github.com/aerokube/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/protect"
+	"github.com/ArsenBalakshiev/selenoid/internal/service"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	assert "github.com/stretchr/testify/require"

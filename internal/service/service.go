@@ -2,13 +2,13 @@ package service
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/config"
-	"github.com/aerokube/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/config"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 	"github.com/docker/docker/client"
 )
 
@@ -70,7 +70,7 @@ type DefaultManager struct {
 func (m *DefaultManager) Find(caps session.Caps, requestId uint64) (Starter, bool) {
 	browserName := caps.BrowserName()
 	version := caps.Version
-	log.Printf("[%d] [LOCATING_SERVICE] [%s] [%s]", requestId, browserName, version)
+	log.Printf(requestId, "LOCATING_SERVICE", "[%s] [%s]", browserName, version)
 	service, version, ok := m.Config.Find(browserName, version)
 	serviceBase := ServiceBase{RequestId: requestId, Service: service}
 	if !ok {
@@ -81,7 +81,7 @@ func (m *DefaultManager) Find(caps session.Caps, requestId uint64) (Starter, boo
 		if m.Client == nil {
 			return nil, false
 		}
-		log.Printf("[%d] [USING_DOCKER] [%s] [%s]", requestId, browserName, version)
+		log.Printf(requestId, "USING_DOCKER", "[%s] [%s]", browserName, version)
 		return &Docker{
 			ServiceBase: serviceBase,
 			Environment: *m.Environment,
@@ -89,13 +89,18 @@ func (m *DefaultManager) Find(caps session.Caps, requestId uint64) (Starter, boo
 			Client:      m.Client,
 			LogConfig:   m.Config.ContainerLogs}, true
 	case []interface{}:
-		log.Printf("[%d] [USING_DRIVER] [%s] [%s]", requestId, browserName, version)
+		log.Printf(requestId, "USING_DRIVER", "[%s] [%s]", browserName, version)
 		return &Driver{ServiceBase: serviceBase, Environment: *m.Environment, Caps: caps}, true
 	}
 	return nil, false
 }
 
 func wait(u string, t time.Duration) error {
+	requestTimeout := t
+	if requestTimeout > time.Second {
+		requestTimeout = time.Second
+	}
+	client := &http.Client{Timeout: requestTimeout}
 	up := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
@@ -107,7 +112,7 @@ func wait(u string, t time.Duration) error {
 			}
 			req, _ := http.NewRequest(http.MethodHead, u, nil)
 			req.Close = true
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := client.Do(req)
 			if resp != nil {
 				_ = resp.Body.Close()
 			}

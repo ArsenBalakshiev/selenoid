@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test:
-    name: Go test + vet
+    name: Go test + vet + lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,16 +24,38 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
       - name: Test
         run: go test -tags 's3 metadata' -race -coverprofile=coverage.txt -covermode=atomic ./...
 
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.txt
+          if-no-files-found: error
+
       - name: Vulnerability scan
-        # Advisory: fails today on stdlib/x-net/docker vulns; unblocking
-        # pipeline until a dedicated dependency upgrade pass.
-        continue-on-error: true
+        # Blocking scan. GO-2026-4887/GO-2026-4883 affect the Moby daemon and
+        # have no fix yet; selenoid only uses the SDK client side, so those
+        # advisories are filtered out. Remove them from the ignore list once
+        # docker/docker ships a fixed release.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          "$(go env GOPATH)/bin/govulncheck" -tags production ./...
+          "$(go env GOPATH)/bin/govulncheck" -tags production ./... | tee /tmp/vuln.txt
+          FOUND=$(grep -Eo 'GO-20[0-9]{2}-[0-9]{4}' /tmp/vuln.txt | sort -u)
+          NEW=0
+          for id in $FOUND; do
+            case "$id" in
+              GO-2026-4887|GO-2026-4883) ;;
+              *) NEW=1; echo "NEW VULNERABILITY: $id" ;;
+            esac
+          done
+          [ "$NEW" = 0 ] || exit 1
 
   e2e:
     name: E2E smoke (compose + pytest)
@@ -47,14 +69,13 @@ jobs:
           go-version-file: go.mod
 
       - name: Build linux binary
-        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/aerokube/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 ./cmd/selenoid
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/ArsenBalakshiev/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 ./cmd/selenoid
 
       - name: Compose up (create without start)
         run: docker compose -f docker-compose.ci.yml up -d --no-start --build
 
       - name: Ship browsers.json into container
         run: docker cp browsers.json selenoid:/etc/selenoid/browsers.json
-
       - name: Start selenoid
         run: docker compose -f docker-compose.ci.yml up -d
 
@@ -89,7 +110,10 @@ jobs:
       - name: Pre-pull browser images
         run: |
           docker pull ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest
+          docker pull ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest-vnc
+          docker pull ghcr.io/arsenbalakshiev/selenoid-images:yandex-latest-vnc
           docker pull selenoid/vnc:firefox_124.0
+          docker pull selenoid/video-recorder:latest-release
 
       - uses: actions/setup-python@v5
         with:
@@ -99,6 +123,9 @@ jobs:
         run: pip install -r tests/requirements.txt
 
       - name: Run smoke tests
+        env:
+          SELENOID_VIDEO_BROWSER: chrome
+          SELENOID_VIDEO_BROWSER_VERSION: latest-vnc
         run: |
           pytest tests/ -v || {
             echo "=== status probe ==="
@@ -144,8 +171,8 @@ jobs:
 
       - name: Build linux binaries
         run: |
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/aerokube/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 ./cmd/selenoid
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/aerokube/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_arm64 ./cmd/selenoid
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/ArsenBalakshiev/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_amd64 ./cmd/selenoid
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/ArsenBalakshiev/selenoid/internal/selenoid.gitRevision=${GITHUB_SHA} -s -w" -o dist/selenoid_linux_arm64 ./cmd/selenoid
 
       - uses: docker/setup-qemu-action@v3
 

@@ -6,8 +6,16 @@
 				"image": "ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest",
 				"port": "4444"
 			},
+			"latest-vnc": {
+				"image": "ghcr.io/arsenbalakshiev/selenoid-images:chrome-latest-vnc",
+				"port": "4444"
+			},
 			"yandex": {
 				"image": "ghcr.io/arsenbalakshiev/selenoid-images:yandex-latest",
+				"port": "4444"
+			},
+			"yandex-vnc": {
+				"image": "ghcr.io/arsenbalakshiev/selenoid-images:yandex-latest-vnc",
 				"port": "4444"
 			}
 		}

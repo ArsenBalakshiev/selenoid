@@ -32,7 +32,7 @@ No need to manually install browsers or dive into WebDriver documentation. Avail
 Image tags are floating and updated with each rebuild. Yandex Browser is requested in tests with `browserName: chrome` and `version: yandex`.
 
 ### Live Browser Screen and Logs
-New **[rich user interface](https://github.com/aerokube/selenoid-ui)** showing browser screen and Selenium session logs:
+New **[rich user interface](https://github.com/ArsenBalakshiev/selenoid-ui)** showing browser screen and Selenium session logs:
 ![Selenoid UI](docs/img/selenoid-ui.png)
 
 ### Video Recording
@@ -54,10 +54,21 @@ Suitable for personal usage and in big clusters:
 
 ## Complete Guide & Build Instructions
 
-Complete reference guide can be found at: http://aerokube.com/selenoid/latest/
-
 To build and run from source:
 ```
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/selenoid_linux_amd64 ./cmd/selenoid
 docker compose up -d --build
 ```
+
+To run unit tests locally:
+```
+CGO_ENABLED=1 go test -tags 's3 metadata' -race ./...
+```
+
+### Logging
+
+Selenoid uses structured logging (`log/slog`). Set the `LOG_FORMAT=json`
+environment variable to emit machine-readable JSON records (e.g. for the
+ELK stack), and `LOG_LEVEL` to one of `debug`, `info`, `warn`, `error` to
+control verbosity. Default output preserves the legacy
+`[<requestId>] [<TAG>] [message]` console format.

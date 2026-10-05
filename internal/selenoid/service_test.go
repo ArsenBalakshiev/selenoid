@@ -1,7 +1,6 @@
 package selenoid
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -9,13 +8,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/config"
-	"github.com/aerokube/selenoid/internal/service"
-	"github.com/aerokube/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/config"
+	"github.com/ArsenBalakshiev/selenoid/internal/service"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	assert "github.com/stretchr/testify/require"
@@ -386,12 +386,15 @@ func testTCPServer(data string) net.Listener {
 func readDataFromWebSocket(t *testing.T, wsURL string) string {
 	ws, err := websocket.Dial(wsURL, "", "http://localhost")
 	assert.NoError(t, err)
+	defer ws.Close()
 
 	var msg = make([]byte, 512)
-	_, err = ws.Read(msg)
-	msg = bytes.Trim(msg, "\x00")
-	//assert.NoError(t, err)
-	return string(msg)
+	n, err := ws.Read(msg)
+	if err != nil && n == 0 {
+		// x/net/websocket may return an error on close; data already read is still valid.
+		t.Logf("websocket read returned: %v", err)
+	}
+	return strings.TrimRight(string(msg[:n]), "\x00")
 }
 
 func TestGetLogs(t *testing.T) {

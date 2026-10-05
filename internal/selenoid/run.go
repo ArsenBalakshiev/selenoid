@@ -3,11 +3,9 @@ package selenoid
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
-	"github.com/aerokube/selenoid/internal/info"
-	"github.com/docker/docker/api"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -16,18 +14,21 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	ggr "github.com/aerokube/ggr/config"
-	"github.com/aerokube/selenoid/internal/config"
-	"github.com/aerokube/selenoid/internal/jsonerror"
-	"github.com/aerokube/selenoid/internal/protect"
-	"github.com/aerokube/selenoid/internal/service"
-	"github.com/aerokube/selenoid/internal/session"
-	"github.com/aerokube/selenoid/internal/upload"
+	"github.com/ArsenBalakshiev/selenoid/internal/config"
+	"github.com/ArsenBalakshiev/selenoid/internal/info"
+	"github.com/ArsenBalakshiev/selenoid/internal/jsonerror"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
+	"github.com/ArsenBalakshiev/selenoid/internal/protect"
+	"github.com/ArsenBalakshiev/selenoid/internal/service"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/upload"
+	"github.com/docker/docker/api"
 	"github.com/docker/docker/client"
-	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
 
@@ -60,6 +61,8 @@ var (
 	queue                    *protect.Queue
 	manager                  service.Manager
 	cli                      *client.Client
+	mem                      service.MemLimit
+	cpu                      service.CpuLimit
 
 	startTime = time.Now()
 
@@ -68,9 +71,20 @@ var (
 	buildStamp  = "unknown"
 )
 
+var (
+	once sync.Once
+)
+
+// init registers command line flags. Parsing happens in Run(), so importing
+// this package from tests does not require a working environment.
 func init() {
-	var mem service.MemLimit
-	var cpu service.CpuLimit
+	flags()
+}
+
+func flags() {
+	if flag.Parsed() {
+		return
+	}
 	flag.BoolVar(&disableDocker, "disable-docker", false, "Disable docker support")
 	flag.BoolVar(&disableQueue, "disable-queue", false, "Disable wait queue")
 	flag.BoolVar(&enableFileUpload, "enable-file-upload", false, "File upload support")
@@ -95,6 +109,15 @@ func init() {
 	flag.StringVar(&logOutputDir, "log-output-dir", "", "Directory to save session log to")
 	flag.BoolVar(&saveAllLogs, "save-all-logs", false, "Whether to save all logs without considering capabilities")
 	flag.DurationVar(&gracefulPeriod, "graceful-period", 300*time.Second, "graceful shutdown period in time.Duration format, e.g. 300s or 500ms")
+}
+
+// init once the flags are parsed and initializes the selenoid environment:
+// it is safe to call multiple times; actual work happens only once.
+func configure() {
+	once.Do(configureOnce)
+}
+
+func configureOnce() {
 	flag.Parse()
 
 	if version {
@@ -105,7 +128,7 @@ func init() {
 	var err error
 	hostname, err = os.Hostname()
 	if err != nil {
-		log.Fatalf("[-] [INIT] [%s: %v]", os.Args[0], err)
+		log.FatalNoId("INIT", "[%s: %v]", os.Args[0], err)
 	}
 	if ggrHostEnv := os.Getenv("GGR_HOST"); ggrHostEnv != "" {
 		ggrHost = parseGgrHost(ggrHostEnv)
@@ -114,12 +137,12 @@ func init() {
 	conf = config.NewConfig()
 	err = conf.Load(confPath, logConfPath)
 	if err != nil {
-		log.Fatalf("[-] [INIT] [%s: %v]", os.Args[0], err)
+		log.FatalNoId("INIT", "[%s: %v]", os.Args[0], err)
 	}
 	onSIGHUP(func() {
 		err := conf.Load(confPath, logConfPath)
 		if err != nil {
-			log.Printf("[-] [INIT] [%s: %v]", os.Args[0], err)
+			log.PrintfNoId("INIT", "[%s: %v]", os.Args[0], err)
 		}
 	})
 	inDocker := false
@@ -131,26 +154,26 @@ func init() {
 	if !disableDocker {
 		videoOutputDir, err = filepath.Abs(videoOutputDir)
 		if err != nil {
-			log.Fatalf("[-] [INIT] [Invalid video output dir %s: %v]", videoOutputDir, err)
+			log.FatalNoId("INIT", "[Invalid video output dir %s: %v]", videoOutputDir, err)
 		}
-		err = os.MkdirAll(videoOutputDir, os.FileMode(0644))
+		err = os.MkdirAll(videoOutputDir, 0755)
 		if err != nil {
-			log.Fatalf("[-] [INIT] [Failed to create video output dir %s: %v]", videoOutputDir, err)
+			log.FatalNoId("INIT", "[Failed to create video output dir %s: %v]", videoOutputDir, err)
 		}
-		log.Printf("[-] [INIT] [Video Dir: %s]", videoOutputDir)
+		log.PrintfNoId("INIT", "[Video Dir: %s]", videoOutputDir)
 	}
 	if logOutputDir != "" {
 		logOutputDir, err = filepath.Abs(logOutputDir)
 		if err != nil {
-			log.Fatalf("[-] [INIT] [Invalid log output dir %s: %v]", logOutputDir, err)
+			log.FatalNoId("INIT", "[Invalid log output dir %s: %v]", logOutputDir, err)
 		}
-		err = os.MkdirAll(logOutputDir, os.FileMode(0644))
+		err = os.MkdirAll(logOutputDir, 0755)
 		if err != nil {
-			log.Fatalf("[-] [INIT] [Failed to create log output dir %s: %v]", logOutputDir, err)
+			log.FatalNoId("INIT", "[Failed to create log output dir %s: %v]", logOutputDir, err)
 		}
-		log.Printf("[-] [INIT] [Logs Dir: %s]", logOutputDir)
+		log.PrintfNoId("INIT", "[Logs Dir: %s]", logOutputDir)
 		if saveAllLogs {
-			log.Printf("[-] [INIT] [Saving all logs]")
+			log.PrintfNoId("INIT", "[Saving all logs]")
 		}
 	}
 
@@ -173,7 +196,7 @@ func init() {
 	if disableDocker {
 		manager = &service.DefaultManager{Environment: &environment, Config: conf}
 		if logOutputDir != "" && captureDriverLogs {
-			log.Fatalf("[-] [INIT] [In drivers mode only one of -capture-driver-logs and -log-output-dir flags is allowed]")
+			log.FatalNoId("INIT", "[In drivers mode only one of -capture-driver-logs and -log-output-dir flags is allowed]")
 		}
 		return
 	}
@@ -183,23 +206,23 @@ func init() {
 	}
 	u, err := client.ParseHostURL(dockerHost)
 	if err != nil {
-		log.Fatalf("[-] [INIT] [%v]", err)
+		log.FatalNoId("INIT", "[%v]", err)
 	}
 	ip, _, _ := net.SplitHostPort(u.Host)
 	environment.IP = ip
 	cli, err = createCompatibleDockerClient(
 		func(specifiedApiVersion string) {
-			log.Printf("[-] [INIT] [Using Docker API version: %s]", specifiedApiVersion)
+			log.PrintfNoId("INIT", "[Using Docker API version: %s]", specifiedApiVersion)
 		},
 		func(determinedApiVersion string) {
-			log.Printf("[-] [INIT] [Your Docker API version is %s]", determinedApiVersion)
+			log.PrintfNoId("INIT", "[Your Docker API version is %s]", determinedApiVersion)
 		},
 		func(defaultApiVersion string) {
-			log.Printf("[-] [INIT] [Did not manage to determine your Docker API version - using default version: %s]", defaultApiVersion)
+			log.PrintfNoId("INIT", "[Did not manage to determine your Docker API version - using default version: %s]", defaultApiVersion)
 		},
 	)
 	if err != nil {
-		log.Fatalf("[-] [INIT] [New docker client: %v]", err)
+		log.FatalNoId("INIT", "[New docker client: %v]", err)
 	}
 	manager = &service.DefaultManager{Environment: &environment, Client: cli, Config: conf}
 }
@@ -261,17 +284,17 @@ func isDockerAPIVersionCorrect(docker *client.Client) bool {
 func parseGgrHost(s string) *ggr.Host {
 	h, p, err := net.SplitHostPort(s)
 	if err != nil {
-		log.Fatalf("[-] [INIT] [Invalid Ggr host: %v]", err)
+		log.FatalNoId("INIT", "[Invalid Ggr host: %v]", err)
 	}
 	ggrPort, err := strconv.Atoi(p)
 	if err != nil {
-		log.Fatalf("[-] [INIT] [Invalid Ggr host: %v]", err)
+		log.FatalNoId("INIT", "[Invalid Ggr host: %v]", err)
 	}
 	host := &ggr.Host{
 		Name: h,
 		Port: ggrPort,
 	}
-	log.Printf("[-] [INIT] [Will prefix all session IDs with a hash-sum: %s]", host.Sum())
+	log.PrintfNoId("INIT", "[Will prefix all session IDs with a hash-sum: %s]", host.Sum())
 	return host
 }
 
@@ -333,7 +356,7 @@ func video(w http.ResponseWriter, r *http.Request) {
 		listFilesAsJson(requestId, w, videoOutputDir, "VIDEO_ERROR")
 		return
 	}
-	log.Printf("[%d] [VIDEO_LISTING] [%s] [%s]", requestId, user, remote)
+	log.Printf(requestId, "VIDEO_LISTING", "[%s] [%s]", user, remote)
 	fileServer := http.StripPrefix(paths.Video, http.FileServer(http.Dir(videoOutputDir)))
 	fileServer.ServeHTTP(w, r)
 }
@@ -352,7 +375,7 @@ func deleteFileIfExists(requestId uint64, w http.ResponseWriter, r *http.Request
 		http.Error(w, fmt.Sprintf("Failed to delete file %s: %v", filePath, err), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("[%d] [%s] [%s] [%s] [%s]", requestId, status, user, remote, fileName)
+	log.Printf(requestId, status, "[%s] [%s] [%s]", user, remote, fileName)
 }
 
 var paths = struct {
@@ -408,8 +431,9 @@ func showVersion() {
 }
 
 func Run() {
-	log.Printf("[-] [INIT] [Timezone: %s]", time.Local)
-	log.Printf("[-] [INIT] [Listening on %s]", listen)
+	configure()
+	log.PrintfNoId("INIT", "[Timezone: %s]", time.Local)
+	log.PrintfNoId("INIT", "[Listening on %s]", listen)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -424,15 +448,15 @@ func Run() {
 	}()
 	select {
 	case err := <-e:
-		log.Fatalf("[-] [INIT] [Failed to start: %v]", err)
+		log.FatalNoId("INIT", "[Failed to start: %v]", err)
 	case <-stop:
 	}
 
-	log.Printf("[-] [SHUTTING_DOWN] [%s]", gracefulPeriod)
+	log.PrintfNoId("SHUTTING_DOWN", "[%s]", gracefulPeriod)
 	ctx, cancel := context.WithTimeout(context.Background(), gracefulPeriod)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("[-] [SHUTTING_DOWN] [Failed to shut down: %v]", err)
+		log.FatalNoId("SHUTTING_DOWN", "[Failed to shut down: %v]", err)
 	}
 
 	sessions.Each(func(k string, s *session.Session) {
@@ -445,7 +469,7 @@ func Run() {
 	if !disableDocker {
 		err := cli.Close()
 		if err != nil {
-			log.Fatalf("[-] [SHUTTING_DOWN] [Error closing Docker client: %v]", err)
+			log.FatalNoId("SHUTTING_DOWN", "[Error closing Docker client: %v]", err)
 		}
 	}
 }

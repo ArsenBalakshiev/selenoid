@@ -3,13 +3,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/session"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 	"github.com/docker/docker/api/types/container"
 )
 
@@ -97,20 +97,20 @@ func loadJSON(filename string, v interface{}) error {
 
 // Load loads config from file
 func (config *Config) Load(browsers, containerLogs string) error {
-	log.Println("[-] [INIT] [Loading configuration files...]")
+	log.PrintfNoId("INIT", "[Loading configuration files...]")
 	br := make(map[string]Versions)
 	err := loadJSON(browsers, &br)
 	if err != nil {
 		return fmt.Errorf("browsers config: %v", err)
 	}
-	log.Printf("[-] [INIT] [Loaded configuration from %s]", browsers)
+	log.PrintfNoId("INIT", "[Loaded configuration from %s]", browsers)
 	cl := &container.LogConfig{}
 	if containerLogs != "" {
 		err = loadJSON(containerLogs, cl)
 		if err != nil {
 			return fmt.Errorf("log config: %v", err)
 		}
-		log.Printf("[-] [INIT] [Loaded log configuration from %s]", containerLogs)
+		log.PrintfNoId("INIT", "[Loaded log configuration from %s]", containerLogs)
 	}
 	config.lock.Lock()
 	defer config.lock.Unlock()
@@ -128,7 +128,7 @@ func (config *Config) Find(name string, version string) (*Browser, string, bool)
 		return nil, "", false
 	}
 	if version == "" {
-		log.Printf("[-] [DEFAULT_VERSION] [Using default version: %s]", browser.Default)
+		log.PrintfNoId("DEFAULT_VERSION", "[Using default version: %s]", browser.Default)
 		version = browser.Default
 		if version == "" {
 			return nil, "", false
@@ -171,23 +171,23 @@ func (config *Config) State(sessions *session.Map, limit, queued, pending int) *
 			state.Browsers[browserName][version][session.Quota] = v
 		}
 		v.Count++
-		vnc := false
-		if session.HostPort.VNC != "" {
-			vnc = true
-		}
-		ctr := session.Container
-		sess := Session{
-			ID:            id,
-			ContainerInfo: ctr,
-			VNC:           vnc,
-			Screen:        session.Caps.ScreenResolution,
-			Caps:          session.Caps,
-			Started:       session.Started,
-		}
-		if ctr != nil {
-			sess.Container = ctr.ID
-		}
-		v.Sessions = append(v.Sessions, sess)
+		stateContainer := session.Container
+		v.Sessions = append(v.Sessions, buildSession(id, session, stateContainer))
 	})
 	return state
+}
+
+func buildSession(id string, s *session.Session, stateContainer *session.Container) Session {
+	sess := Session{
+		ID:            id,
+		ContainerInfo: stateContainer,
+		VNC:           s.HostPort.VNC != "",
+		Screen:        s.Caps.ScreenResolution,
+		Caps:          s.Caps,
+		Started:       s.Started,
+	}
+	if stateContainer != nil {
+		sess.Container = stateContainer.ID
+	}
+	return sess
 }

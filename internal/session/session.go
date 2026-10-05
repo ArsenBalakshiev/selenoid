@@ -53,7 +53,9 @@ func (c *Caps) ProcessExtensionCapabilities() {
 	}
 
 	if c.ExtensionCapabilities != nil {
-		mergo.Merge(c, *c.ExtensionCapabilities, mergo.WithOverride) //We probably need to handle returned error
+		if err := mergo.Merge(c, *c.ExtensionCapabilities, mergo.WithOverride); err != nil {
+			return
+		}
 	}
 }
 

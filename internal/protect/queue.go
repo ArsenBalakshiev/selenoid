@@ -2,13 +2,13 @@ package protect
 
 import (
 	"errors"
-	"github.com/aerokube/selenoid/internal/info"
-	"log"
 	"math"
 	"net/http"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/jsonerror"
+	"github.com/ArsenBalakshiev/selenoid/internal/info"
+	"github.com/ArsenBalakshiev/selenoid/internal/jsonerror"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
 )
 
 // Queue - struct to hold a number of sessions
@@ -48,7 +48,7 @@ func (q *Queue) Check(next http.HandlerFunc) http.HandlerFunc {
 		default:
 			if q.disabled {
 				user, remote := info.RequestInfo(r)
-				log.Printf("[-] [QUEUE_IS_FULL] [%s] [%s]", user, remote)
+				log.PrintfNoId("QUEUE_IS_FULL", "[%s] [%s]", user, remote)
 				err := errors.New("queue is full")
 				jsonerror.UnknownError(err).Encode(w)
 				return
@@ -62,7 +62,7 @@ func (q *Queue) Check(next http.HandlerFunc) http.HandlerFunc {
 func (q *Queue) Protect(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, remote := info.RequestInfo(r)
-		log.Printf("[-] [NEW_REQUEST] [%s] [%s]", user, remote)
+		log.PrintfNoId("NEW_REQUEST", "[%s] [%s]", user, remote)
 		s := time.Now()
 		go func() {
 			q.queued <- struct{}{}
@@ -70,13 +70,13 @@ func (q *Queue) Protect(next http.HandlerFunc) http.HandlerFunc {
 		select {
 		case <-r.Context().Done():
 			<-q.queued
-			log.Printf("[-] [CLIENT_DISCONNECTED] [%s] [%s] [%s]", user, remote, time.Since(s))
+			log.PrintfNoId("CLIENT_DISCONNECTED", "[%s] [%s] [%s]", user, remote, time.Since(s))
 			return
 		case q.limit <- struct{}{}:
 			q.pending <- struct{}{}
 		}
 		<-q.queued
-		log.Printf("[-] [NEW_REQUEST_ACCEPTED] [%s] [%s]", user, remote)
+		log.PrintfNoId("NEW_REQUEST_ACCEPTED", "[%s] [%s]", user, remote)
 		next.ServeHTTP(w, r)
 	}
 }

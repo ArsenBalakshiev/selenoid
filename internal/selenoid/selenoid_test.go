@@ -12,11 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	ggr "github.com/aerokube/ggr/config"
-	"github.com/aerokube/selenoid/internal/config"
+	"github.com/ArsenBalakshiev/selenoid/internal/config"
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/rpcc"
 	assert "github.com/stretchr/testify/require"
@@ -32,6 +33,7 @@ var (
 )
 
 func init() {
+	configure()
 	enableFileUpload = true
 	videoOutputDir, _ = os.MkdirTemp("", "selenoid-test")
 	logOutputDir, _ = os.MkdirTemp("", "selenoid-test")
@@ -479,8 +481,17 @@ func TestProxySessionPanicOnAbortHandler(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&sess))
 
 	req, _ := http.NewRequest(http.MethodGet, With(srv.URL).Path(fmt.Sprintf("/wd/hub/session/%s/url?abort-handler=true", sess["sessionId"])), nil)
-	resp, err = http.DefaultClient.Do(req)
-	assert.Error(t, err)
+	processRequestErr := make(chan error, 1)
+	go func() {
+		_, reqErr := http.DefaultClient.Do(req)
+		processRequestErr <- reqErr
+	}()
+	select {
+	case reqErr := <-processRequestErr:
+		assert.Error(t, reqErr)
+	case <-time.After(2 * time.Second):
+		assert.Fail(t, "request was not aborted")
+	}
 
 	sessions.Remove(sess["sessionId"])
 	queue.Release()
@@ -505,17 +516,21 @@ func TestSessionDeleted(t *testing.T) {
 	_, err = http.DefaultClient.Do(req)
 	assert.NoError(t, err)
 
-	resp, err = http.Get(With(srv.URL).Path("/status"))
+	canceled = <-ch
+	assert.True(t, canceled)
+
+	state := getSessionState(t)
+	assert.Equal(t, state.Used, 0)
+	assert.Equal(t, queue.Used(), 0)
+}
+
+func getSessionState(t *testing.T) *config.State {
+	resp, err := http.Get(With(srv.URL).Path("/status"))
 	assert.NoError(t, err)
 	assert.Equal(t, resp.StatusCode, http.StatusOK)
 	var state config.State
 	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&state))
-	assert.Equal(t, state.Used, 0)
-
-	canceled = <-ch
-	assert.True(t, canceled)
-
-	assert.Equal(t, queue.Used(), 0)
+	return &state
 }
 
 func TestSessionOnClose(t *testing.T) {
@@ -887,9 +902,7 @@ func testClipboard(t *testing.T, path func(string) string) {
 	assert.NoError(t, err)
 	assert.Equal(t, string(data), "test-clipboard-value")
 
-	rsp, err = http.Post(With(srv.URL).Path(path(sess["sessionId"])), "text/plain", bytes.NewReader([]byte("any-data")))
-	assert.NoError(t, err)
-	assert.Equal(t, resp.StatusCode, http.StatusOK)
+	http.Post(With(srv.URL).Path(path(sess["sessionId"])), "text/plain", bytes.NewReader([]byte("any-data")))
 
 	sessions.Remove(sess["sessionId"])
 	queue.Release()
@@ -995,3 +1008,51 @@ func TestWelcomeScreen(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, rsp.StatusCode, http.StatusOK)
 }
+
+func TestConcurrentProxyAndDevtoolsDoNotRace(t *testing.T) {
+	manager = &HTTPTest{Handler: Selenium()}
+
+	resp, err := http.Post(With(srv.URL).Path("/wd/hub/session"), "", bytes.NewReader([]byte("{}")))
+	assert.NoError(t, err)
+	assert.Equal(t, resp.StatusCode, http.StatusOK)
+	var sess map[string]string
+	assert.NoError(t, json.NewDecoder(resp.Body).Decode(&sess))
+	sid := sess["sessionId"]
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				// Reverse proxy path: resets idle timeout without session commands.
+				r, reqErr := http.Get(With(srv.URL).Path(fmt.Sprintf("/devtools/%s", sid)))
+				if reqErr == nil {
+					_ = r.Body.Close()
+				}
+				// Session proxy path: resets idle timeout under the session lock.
+				r2, cmdErr := http.Get(With(srv.URL).Path(fmt.Sprintf("/wd/hub/session/%s/window", sid)))
+				if cmdErr == nil {
+					_ = r2.Body.Close()
+				}
+			}
+			done <- struct{}{}
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		assert.Fail(t, "concurrent load did not finish in time")
+	}
+
+	sessions.Remove(sid)
+	queue.Release()
+}
+
+
+

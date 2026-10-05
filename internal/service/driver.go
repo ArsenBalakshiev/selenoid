@@ -3,8 +3,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"github.com/aerokube/selenoid/internal/info"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -12,7 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/aerokube/selenoid/internal/session"
+	"github.com/ArsenBalakshiev/selenoid/internal/info"
+	log "github.com/ArsenBalakshiev/selenoid/internal/log"
+	"github.com/ArsenBalakshiev/selenoid/internal/session"
 )
 
 // Driver - driver processes manager
@@ -39,18 +39,18 @@ func (d *Driver) StartWithCancel() (*StartedService, error) {
 	if len(cmdLine) == 0 {
 		return nil, errors.New("configuration error: image is empty")
 	}
-	log.Printf("[%d] [ALLOCATING_PORT]", requestId)
+	log.Printf(requestId, "ALLOCATING_PORT", "")
 	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return nil, fmt.Errorf("cannot bind to port: %v", err)
 	}
 	u := &url.URL{Scheme: "http", Host: l.Addr().String(), Path: d.Service.Path}
 	_, port, _ := net.SplitHostPort(l.Addr().String())
-	log.Printf("[%d] [ALLOCATED_PORT] [%s]", requestId, port)
+	log.Printf(requestId, "ALLOCATED_PORT", "[%s]", port)
 	cmdLine = append(cmdLine, fmt.Sprintf("--port=%s", port))
 	cmd := exec.Command(cmdLine[0], cmdLine[1:]...)
 	cmd.Env = append(cmd.Env, d.Service.Env...)
-	cmd.Env = append(cmd.Env, d.Caps.Env...)
+	cmd.Env = append(cmd.Env, d.Env...)
 	if d.CaptureDriverLogs {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -64,7 +64,7 @@ func (d *Driver) StartWithCancel() (*StartedService, error) {
 		cmd.Stderr = f
 	}
 	_ = l.Close()
-	log.Printf("[%d] [STARTING_PROCESS] [%s]", requestId, cmdLine)
+	log.Printf(requestId, "STARTING_PROCESS", "[%s]", cmdLine)
 	s := time.Now()
 	err = cmd.Start()
 	if err != nil {
@@ -75,10 +75,10 @@ func (d *Driver) StartWithCancel() (*StartedService, error) {
 		d.stopProcess(cmd)
 		return nil, err
 	}
-	log.Printf("[%d] [PROCESS_STARTED] [%d] [%.2fs]", requestId, cmd.Process.Pid, info.SecondsSince(s))
-	log.Printf("[%d] [PROXY_TO] [%s]", requestId, u.String())
+	log.Printf(requestId, "PROCESS_STARTED", "[%d] [%.2fs]", cmd.Process.Pid, info.SecondsSince(s))
+	log.Printf(requestId, "PROXY_TO", "[%s]", u.String())
 	hp := session.HostPort{}
-	if d.Caps.VNC {
+	if d.VNC {
 		hp.VNC = "127.0.0.1:5900"
 	}
 	return &StartedService{Url: u, HostPort: hp, Origin: fmt.Sprintf("localhost:%s", port), Cancel: func() { d.stopProcess(cmd) }}, nil
@@ -86,14 +86,14 @@ func (d *Driver) StartWithCancel() (*StartedService, error) {
 
 func (d *Driver) stopProcess(cmd *exec.Cmd) {
 	s := time.Now()
-	log.Printf("[%d] [TERMINATING_PROCESS] [%d]", d.RequestId, cmd.Process.Pid)
+	log.Printf(d.RequestId, "TERMINATING_PROCESS", "[%d]", cmd.Process.Pid)
 	err := stopProc(cmd)
 	if err != nil {
-		log.Printf("[%d] [FAILED_TO_TERMINATE_PROCESS] [%d] [%v]", d.RequestId, cmd.Process.Pid, err)
+		log.Printf(d.RequestId, "FAILED_TO_TERMINATE_PROCESS", "[%d] [%v]", cmd.Process.Pid, err)
 		return
 	}
 	if stdout, ok := cmd.Stdout.(*os.File); ok && !d.CaptureDriverLogs && d.LogOutputDir != "" {
 		_ = stdout.Close()
 	}
-	log.Printf("[%d] [TERMINATED_PROCESS] [%d] [%.2fs]", d.RequestId, cmd.Process.Pid, info.SecondsSince(s))
+	log.Printf(d.RequestId, "TERMINATED_PROCESS", "[%d] [%.2fs]", cmd.Process.Pid, info.SecondsSince(s))
 }
